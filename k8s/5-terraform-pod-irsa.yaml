@@ -1,0 +1,176 @@
+---
+# Pod template for Terraform execution with IRSA
+# ✅ Uses IAM roles (IRSA) - NO credentials stored!
+apiVersion: v1
+kind: Pod
+metadata:
+  name: terraform-executor
+  namespace: aft-terraform
+  labels:
+    app: aft
+    component: terraform
+    job: executor
+spec:
+  serviceAccountName: terraform-sa
+  # ↑ This service account has IRSA annotation
+  # ↑ K8s automatically injects OIDC token
+  # ↑ AWS STS provides temporary credentials
+
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: false
+    runAsUser: 0
+    fsGroup: 0
+
+  containers:
+    - name: terraform
+      image: hashicorp/terraform:latest
+      imagePullPolicy: Always
+
+      workingDir: /terraform
+
+      env:
+        # AWS Configuration
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+
+        # ✅ NO AWS credentials from secrets!
+        # IRSA automatically provides:
+        # - AWS_ROLE_ARN (from service account annotation)
+        # - AWS_WEB_IDENTITY_TOKEN_FILE (K8s OIDC token)
+        # AWS SDK automatically handles credential exchange
+
+        # Terraform settings
+        - name: TF_INPUT
+          value: "false"
+        - name: TF_LOG
+          value: "INFO"
+        - name: TF_LOG_PATH
+          value: "/tmp/terraform.log"
+
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "2"
+          memory: "2Gi"
+
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        privileged: false
+        readOnlyRootFilesystem: false
+
+      volumeMounts:
+        # Terraform code
+        - name: terraform-code
+          mountPath: /terraform
+          readOnly: true
+
+        # Terraform state (if using local state)
+        - name: terraform-state
+          mountPath: /terraform/.terraform
+
+        # Logs
+        - name: logs
+          mountPath: /var/log
+
+  volumes:
+    # Mount terraform code (from git checkout)
+    - name: terraform-code
+      emptyDir: {}
+
+    # Terraform state volume (ephemeral for this pod)
+    - name: terraform-state
+      emptyDir: {}
+
+    # Logs volume
+    - name: logs
+      emptyDir: {}
+
+---
+# ============================================
+# Job template for one-time terraform runs
+# ============================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: terraform-apply-job
+  namespace: aft-terraform
+  labels:
+    app: aft
+    component: terraform
+    job: apply
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+
+  template:
+    metadata:
+      labels:
+        app: aft
+        component: terraform
+        job: apply
+
+    spec:
+      serviceAccountName: terraform-sa
+      # ↑ IRSA service account
+      # ↑ Credentials provided automatically!
+
+      restartPolicy: Never
+
+      containers:
+        - name: terraform
+          image: hashicorp/terraform:latest
+          imagePullPolicy: Always
+
+          workingDir: /terraform
+
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "🚀 Starting Terraform Apply..."
+              cd terraform
+
+              # AWS credentials automatically available via IRSA!
+              # No need to set them manually
+              # K8s IRSA webhook injects:
+              # - AWS_ROLE_ARN
+              # - AWS_WEB_IDENTITY_TOKEN_FILE
+
+              terraform init
+              terraform validate
+              terraform plan -no-color -out=tfplan
+              terraform apply -no-color -auto-approve tfplan
+              echo "✅ Terraform Apply completed"
+
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: "us-east-1"
+
+            # ✅ NO AWS credential secrets!
+            # IRSA provides credentials automatically
+
+            - name: TF_INPUT
+              value: "false"
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+
+          volumeMounts:
+            - name: terraform-code
+              mountPath: /terraform
+
+      volumes:
+        - name: terraform-code
+          emptyDir: {}

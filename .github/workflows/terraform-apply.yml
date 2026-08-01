@@ -1,0 +1,209 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  apply:
+    name: Terraform Apply
+    runs-on: [self-hosted, aft-runner]
+
+    environment:
+      name: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create Terraform Apply Pod (IRSA)
+        id: apply
+        run: |
+          set -e
+
+          # Copy terraform code to shared volume location
+          mkdir -p /tmp/terraform-${{ github.run_id }}
+          cp -r terraform/* /tmp/terraform-${{ github.run_id }}/
+
+          # Create configmap with terraform code
+          kubectl create configmap terraform-code-${{ github.run_id }} \
+            --from-file=/tmp/terraform-${{ github.run_id }}/ \
+            -n aft-terraform \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # Create temporary pod manifest
+          cat > /tmp/terraform-apply-pod.yaml << 'EOF'
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: terraform-apply-${{ github.run_id }}
+            namespace: aft-terraform
+            labels:
+              app: aft
+              component: terraform
+              job: apply
+          spec:
+            serviceAccountName: terraform-sa
+            restartPolicy: Never
+            containers:
+              - name: terraform
+                image: hashicorp/terraform:latest
+                workingDir: /terraform
+                env:
+                  - name: AWS_DEFAULT_REGION
+                    value: "us-east-1"
+                  - name: TF_INPUT
+                    value: "false"
+                volumeMounts:
+                  - name: terraform-code
+                    mountPath: /terraform
+                  - name: output
+                    mountPath: /output
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    set -e
+                    echo "🚀 Starting Terraform Apply (with IRSA)..."
+
+                    terraform init
+                    terraform validate
+                    terraform plan -no-color -out=tfplan
+                    terraform show -no-color tfplan > /output/plan.txt
+
+                    echo "⚙️  Running terraform apply..."
+                    terraform apply -no-color -auto-approve tfplan
+
+                    echo "📤 Collecting outputs..."
+                    terraform output -json > /output/output.json
+
+                    echo "✅ Apply completed successfully"
+            volumes:
+              - name: terraform-code
+                configMap:
+                  name: terraform-code-${{ github.run_id }}
+              - name: output
+                emptyDir: {}
+          EOF
+
+          # Apply the pod
+          kubectl apply -f /tmp/terraform-apply-pod.yaml
+
+          # Wait for pod to complete
+          echo "⏳ Waiting for terraform apply pod to complete..."
+          kubectl wait --for=condition=Ready pod/terraform-apply-${{ github.run_id }} \
+            -n aft-terraform \
+            --timeout=5m || true
+
+          kubectl wait --for=condition=Completed pod/terraform-apply-${{ github.run_id }} \
+            -n aft-terraform \
+            --timeout=15m || kubectl get pod terraform-apply-${{ github.run_id }} -n aft-terraform -o yaml
+
+          # Copy outputs from pod
+          mkdir -p terraform
+          kubectl cp aft-terraform/terraform-apply-${{ github.run_id }}:/output/plan.txt \
+            terraform/plan.txt || echo "No plan output found"
+
+          kubectl cp aft-terraform/terraform-apply-${{ github.run_id }}:/output/output.json \
+            terraform/output.json || echo "No output found"
+
+          # Display results
+          echo "📋 Plan:"
+          cat terraform/plan.txt || true
+          echo ""
+          echo "📤 Outputs:"
+          cat terraform/output.json || true
+
+          echo "apply_exit_code=0" >> $GITHUB_OUTPUT
+
+      - name: Cleanup terraform apply pod
+        if: always()
+        run: |
+          kubectl delete pod terraform-apply-${{ github.run_id }} \
+            -n aft-terraform \
+            --ignore-not-found=true
+
+          kubectl delete configmap terraform-code-${{ github.run_id }} \
+            -n aft-terraform \
+            --ignore-not-found=true
+
+      - name: Create deployment commit comment
+        uses: actions/github-script@v7
+        if: success()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/plan.txt', 'utf8');
+            const output = JSON.parse(fs.readFileSync('terraform/output.json', 'utf8'));
+
+            let body = '## ✅ Terraform Apply - Completed\n\n';
+
+            body += '### Summary\n';
+            body += `- **Status**: Success\n`;
+            body += `- **Commit**: ${context.sha.substring(0, 7)}\n`;
+            body += `- **Author**: ${context.actor}\n`;
+            body += `- **Time**: ${new Date().toISOString()}\n\n`;
+
+            body += '### Changes Applied\n';
+            body += '```\n' + plan + '\n```\n\n';
+
+            body += '### Outputs\n';
+            body += '```json\n' + JSON.stringify(output, null, 2) + '\n```\n\n';
+
+            body += '---\n';
+            body += '*Automated deployment by Terraform Apply workflow*\n';
+
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: body
+            });
+
+      - name: Create deployment status
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: 'production',
+              required_contexts: [],
+              auto_merge: false,
+              description: 'Terraform Apply completed successfully'
+            });
+
+      - name: Save apply logs (from pod)
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-apply-logs-${{ github.run_id }}
+          path: terraform/
+          retention-days: 30
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: '## ❌ Terraform Apply - Failed\n\n' +
+                    'Check the workflow logs for details.\n' +
+                    '[View Workflow Logs](https://github.com/${ context.repo.owner }/${ context.repo.repo }/actions/runs/${ context.runId })'
+            });

@@ -1,0 +1,51 @@
+---
+# GitHub Actions Runner Deployment
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: aft-runner
+  namespace: arc-system
+  labels:
+    app: aft
+    component: runner
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      runner-type: aft
+
+  template:
+    metadata:
+      labels:
+        runner-type: aft
+        app: aft
+
+    spec:
+      serviceAccountName: actions-runner-sa
+
+      image: ghcr.io/actions/actions-runner:latest
+      imagePullPolicy: Always
+
+      dockerdWithinRunnerContainer: true
+
+      env:
+        - name: RUNNER_SCOPE
+          value: "repo"
+        - name: RUNNER_WORKDIR
+          value: "/runner/_work"
+
+      githubConfigSecretRef:
+        name: github-token
+
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+        fsGroup: 1000

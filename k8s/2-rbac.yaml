@@ -1,0 +1,138 @@
+---
+# Service Account for GitHub Actions Runners
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: actions-runner-sa
+  namespace: arc-system
+  labels:
+    app: arc
+
+---
+# Role for GitHub Actions Runners
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: actions-runner-role
+  namespace: arc-system
+  labels:
+    app: arc
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+
+---
+# RoleBinding for GitHub Actions Runners
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: actions-runner-role-binding
+  namespace: arc-system
+  labels:
+    app: arc
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: actions-runner-role
+subjects:
+  - kind: ServiceAccount
+    name: actions-runner-sa
+    namespace: arc-system
+
+---
+# ============================================
+# SERVICE ACCOUNT FOR TERRAFORM (WITH IRSA)
+# ============================================
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: terraform-sa
+  namespace: aft-terraform
+  labels:
+    app: aft
+  annotations:
+    # ↓ THIS IS THE KEY - IRSA ANNOTATION
+    # Links K8s service account to AWS IAM role
+    # Replace MANAGEMENT-ACCOUNT-ID with your actual account ID!
+    eks.amazonaws.com/role-arn: arn:aws:iam::MANAGEMENT-ACCOUNT-ID:role/TerraformK8sRole
+
+---
+# Role for Terraform execution
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: terraform-role
+  namespace: aft-terraform
+  labels:
+    app: aft
+rules:
+  # Can read from arc-system if needed
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  # Can read config maps
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Can manage pods
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+
+---
+# RoleBinding for Terraform
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: terraform-role-binding
+  namespace: aft-terraform
+  labels:
+    app: aft
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: terraform-role
+subjects:
+  - kind: ServiceAccount
+    name: terraform-sa
+    namespace: aft-terraform
+
+---
+# ============================================
+# CROSS-NAMESPACE RBAC (arc-system → aft-terraform)
+# ============================================
+
+# Allows runners in arc-system to read secrets from aft-terraform if needed
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cross-ns-role
+  namespace: aft-terraform
+  labels:
+    app: aft
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cross-ns-binding
+  namespace: aft-terraform
+  labels:
+    app: aft
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cross-ns-role
+subjects:
+  - kind: ServiceAccount
+    name: actions-runner-sa
+    namespace: arc-system

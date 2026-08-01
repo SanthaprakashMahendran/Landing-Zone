@@ -1,0 +1,18 @@
+---
+# Namespace for Actions Runner Controller
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arc-system
+  labels:
+    app: actions-runner-controller
+
+---
+# Namespace for Terraform
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aft-terraform
+  labels:
+    app: aft
+    environment: production
