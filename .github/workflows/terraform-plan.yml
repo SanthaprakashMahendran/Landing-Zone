@@ -126,7 +126,15 @@ jobs:
         uses: actions/upload-artifact@v3
         if: always()
         with:
-          name: tfplan-${{ github.run_id }}
+          name: tfplan-${{ github.sha }}
+          path: terraform/tfplan
+          retention-days: 1
+
+      - name: Save plan output for PR comment
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: plan-output-${{ github.sha }}
           path: terraform/plan.txt
           retention-days: 1
 

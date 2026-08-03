@@ -24,6 +24,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Download approved plan
+        uses: actions/download-artifact@v3
+        with:
+          name: tfplan-${{ github.sha }}
+          path: terraform/
+
       - name: Create Terraform Apply Pod (IRSA)
         id: apply
         run: |
@@ -75,12 +81,10 @@ jobs:
                     echo "🚀 Starting Terraform Apply (with IRSA)..."
 
                     terraform init
-                    terraform validate
-                    terraform plan -no-color -out=tfplan
-                    terraform show -no-color tfplan > /output/plan.txt
 
-                    echo "⚙️  Running terraform apply..."
+                    echo "📋 Applying approved plan (NO re-planning)..."
                     terraform apply -no-color -auto-approve tfplan
+                    # ↑ Using pre-approved plan from terraform-plan.yml
 
                     echo "📤 Collecting outputs..."
                     terraform output -json > /output/output.json
@@ -189,7 +193,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: terraform-apply-logs-${{ github.run_id }}
+          name: terraform-apply-logs-${{ github.sha }}
           path: terraform/
           retention-days: 30
 
