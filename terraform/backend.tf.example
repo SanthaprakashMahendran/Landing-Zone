@@ -1,12 +1,36 @@
-# This is an example backend configuration for storing Terraform state in S3
-# Uncomment and update the values, then rename to backend.tf
+# ============================================================
+# TERRAFORM STATE BACKEND CONFIGURATION (S3 Locking)
+# ============================================================
+#
+# IMPORTANT: Before using this:
+# 1. Run: terraform apply (to create S3 bucket)
+# 2. Copy this entire file content
+# 3. Rename this file to: backend.tf
+# 4. Run: terraform init (to migrate state to S3)
+#
+# DO NOT commit this file to git - it contains account-specific values
+# Add to .gitignore: terraform/backend.tf
+#
 
+terraform {
+  backend "s3" {
+    # Replace ACCOUNT_ID with your AWS account ID from:
+    # terraform output current_account_id
+    bucket  = "terraform-state-aft-ACCOUNT_ID"  # Replace ACCOUNT_ID
+    key     = "aft/terraform.tfstate"
+    region  = "us-east-1"
+    encrypt = true
+  }
+}
+
+# ============================================================
+# EXAMPLE AFTER SUBSTITUTION:
+# ============================================================
 # terraform {
 #   backend "s3" {
-#     bucket         = "terraform-state-aft-freshworks"
-#     key            = "aft/terraform.tfstate"
-#     region         = "us-east-1"
-#     encrypt        = true
-#     dynamodb_table = "terraform-lock"
+#     bucket  = "terraform-state-aft-123456789012"
+#     key     = "aft/terraform.tfstate"
+#     region  = "us-east-1"
+#     encrypt = true
 #   }
 # }

@@ -463,6 +463,101 @@ lifecycle {
 
 ---
 
+## 🔐 Cross-Account Communication (How New Accounts are Managed)
+
+### **The Question: How does Management Account access new accounts created by terraform?**
+
+### **The Answer: AWS Organizations Auto-Creates Cross-Account Role**
+
+When terraform creates a new account, **AWS automatically creates** a role in that new account:
+
+```
+terraform creates account
+    ↓
+AWS Organizations API
+    ↓
+New Account Created (Account ID: 987654321098)
+    ↓
+AWS AUTO-Creates Role in New Account:
+  Role Name: OrganizationAccountAccessRole
+  Trust Policy: Allows Management Account
+  Permissions: Admin (all AWS services)
+```
+
+**What this means:**
+- You DON'T need to create cross-account roles in your terraform code
+- AWS does it automatically when the account is created
+- Management Account can assume this role and manage the new account
+- This is a built-in AWS Organizations feature
+
+### **How terraform Uses It**
+
+```
+terraform in Management Account
+    ↓
+Creates account via: aws_organizations_account resource
+    ↓
+AWS Organizations API creates account
+    ↓
+AWS auto-creates: OrganizationAccountAccessRole (in new account)
+    ↓
+terraform can now provision resources in new account via cross-account access
+    ↓
+Result: terraform can create IAM roles, SCPs, etc. in member accounts
+```
+
+### **Real Example**
+
+```hcl
+# Your code
+resource "aws_organizations_account" "freshdesk_prod" {
+  name  = "freshdesk-prod"
+  email = "aws+freshdesk-prod@freshworks.com"
+}
+
+# What AWS does automatically:
+✅ Creates account: 987654321098
+✅ Creates role: OrganizationAccountAccessRole (in 987654321098)
+✅ Role trusts: Management Account
+✅ Role permissions: Admin
+
+# Result:
+Management Account can now manage 987654321098 via cross-account access
+```
+
+### **Trust Policy (Auto-Created by AWS)**
+
+AWS creates this automatically (you don't code it):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::MANAGEMENT_ACCOUNT_ID:root"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+**Translation:** *"Management Account can assume me and do anything"*
+
+### **Why You Don't Need to Create Roles**
+
+| Scenario | Need to Create Role? |
+|----------|----------------------|
+| Accounts created via AWS Organizations API | ❌ No (AWS creates auto) |
+| Accounts in your organization | ❌ No (AWS creates auto) |
+| Cross-account access in same organization | ❌ No (AWS creates auto) |
+| Manual account setup | ❌ No (AWS creates auto) |
+| Cross-account access between different orgs | ✅ Yes (manual setup) |
+
+---
+
 ## 📊 Data Flow
 
 ### **Input Variables**
@@ -501,14 +596,14 @@ Returns:
 
 ## 🎯 Quick Reference - What Each Resource Does
 
-| Resource | Creates | Count | Purpose |
-|----------|---------|-------|---------|
-| `aws_organizations_organization` (data) | - | 1 (read) | Get Root OU ID |
-| `aws_organizations_organizational_unit.production` | Production OU | 1 | Organize prod accounts |
-| `aws_organizations_organizational_unit.staging` | Staging OU | 1 | Organize staging accounts |
-| `aws_organizations_account.accounts` | AWS Accounts | 6 | Actual AWS accounts |
-| `aws_organizations_organizational_unit_parent.prod_accounts` | - | 3 | Link prod accounts to OU |
-| `aws_organizations_organizational_unit_parent.staging_accounts` | - | 3 | Link staging accounts to OU |
+| Resource | Creates | Count | Purpose | Auto-Created by AWS? |
+|----------|---------|-------|---------|---------------------|
+| `aws_organizations_organization` (data) | - | 1 (read) | Get Root OU ID | - |
+| `aws_organizations_organizational_unit.production` | Production OU | 1 | Organize prod accounts | - |
+| `aws_organizations_organizational_unit.staging` | Staging OU | 1 | Organize staging accounts | - |
+| `aws_organizations_account.accounts` | AWS Accounts | 6 | Actual AWS accounts | ✅ OrganizationAccountAccessRole in each new account |
+| `aws_organizations_organizational_unit_parent.prod_accounts` | - | 3 | Link prod accounts to OU | - |
+| `aws_organizations_organizational_unit_parent.staging_accounts` | - | 3 | Link staging accounts to OU | - |
 
 ---
 
@@ -553,6 +648,12 @@ terraform destroy
    - OUs created before accounts
    - Accounts created before moving to OUs
    - Prevents "parent OU not found" errors
+
+5. **Cross-Account Access (Automatic):**
+   - When terraform creates a new account, AWS automatically creates `OrganizationAccountAccessRole` in that account
+   - This role trusts the Management Account
+   - You DON'T need to create cross-account roles manually
+   - AWS Organizations handles it automatically
 
 ---
 
