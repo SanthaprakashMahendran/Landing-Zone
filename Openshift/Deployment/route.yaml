@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: landing-app
+  labels:
+    app: landing-app
+spec:
+  # host omitted -> OpenShift generates landing-app-<project>.apps.<cluster-domain>
+  to:
+    kind: Service
+    name: landing-app
+  port:
+    targetPort: 8080-tcp
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

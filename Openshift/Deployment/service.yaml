@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: landing-app
+  labels:
+    app: landing-app
+spec:
+  type: ClusterIP
+  selector:
+    app: landing-app
+  ports:
+    - name: 8080-tcp
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
