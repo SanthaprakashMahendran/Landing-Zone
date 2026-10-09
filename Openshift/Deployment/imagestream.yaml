@@ -1,9 +1,0 @@
-apiVersion: image.openshift.io/v1
-kind: ImageStream
-metadata:
-  name: landing-app
-  labels:
-    app: landing-app
-spec:
-  lookupPolicy:
-    local: true   # lets the Deployment refer to "landing-app:latest" directly
