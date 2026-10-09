@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: landing-app
+  labels:
+    app: landing-app
+  annotations:
+    # When the landing-app:latest tag changes (new build), update the container image -> rollout
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"landing-app:latest"},
+        "fieldPath":"spec.template.spec.containers[?(@.name==\"landing-app\")].image"}]
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: landing-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: landing-app
+    spec:
+      containers:
+        - name: landing-app
+          image: landing-app:latest   # resolved via the ImageStream (lookupPolicy.local)
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: landing-config
+            - secretRef:
+                name: landing-secret
+                optional: true        # pod still starts if the secret isn't created yet
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
