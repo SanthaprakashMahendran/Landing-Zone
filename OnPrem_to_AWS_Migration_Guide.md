@@ -96,6 +96,63 @@ VMware + On-Prem DB → EC2 + RDS + Other AWS services
 On-Prem Monolith → Microservices → Lambda/ECS → Cloud-native
 ```
 
+### Strategy 4: Repurchase (Drop & Shop)
+
+**What:** Replace your application with a SaaS product
+- Stop running the software yourself
+- Move data into a commercial cloud product
+- Usually involves licensing or subscription changes
+
+**Best For:**
+- Commodity apps such as CRM, HR, email, or ticketing
+- The on-prem version is outdated or costly to maintain
+- A SaaS product already does what you need
+
+**Timeline:** 2-8 weeks (mostly data migration and user training)
+
+```
+On-Prem CRM / Exchange / HR app → Salesforce / Microsoft 365 / Workday
+(You manage nothing; vendor runs it)
+```
+
+### Strategy 5: Retire (Decommission)
+
+**What:** Turn off applications that are no longer needed
+- Found during discovery: often 10-20% of the portfolio is unused or redundant
+- Archive data if needed for compliance, then shut down
+
+**Best For:**
+- Duplicate apps doing the same job
+- Apps with very few or zero users
+- Legacy systems whose function moved elsewhere
+
+**Timeline:** Days to 2 weeks
+
+```
+Unused Server → Archive data (S3 / Glacier if required) → Shut down
+(Saves cost, reduces attack surface)
+```
+
+### Strategy 6: Retain (Revisit Later)
+
+**What:** Keep the application on-prem for now
+- Do not migrate yet
+- Revisit in a later migration wave
+
+**Best For:**
+- Recently upgraded hardware or software you have already paid for
+- Strict compliance or data residency requirements
+- Low-latency dependencies on other on-prem systems
+- Apps too complex or risky to move right now
+- Mainframes or other systems with no clear cloud path yet
+
+**Timeline:** N/A (re-evaluate in 6-12 months)
+
+```
+On-Prem Server → Stays On-Prem → Re-evaluate later
+(Often connected to AWS via VPN / Direct Connect in a hybrid setup)
+```
+
 ---
 
 ## For Your VMware Server: Rehost (Lift & Shift) Recommended
