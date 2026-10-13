@@ -99,6 +99,8 @@ A **single place to plan and track** a migration across multiple AWS tools and p
 - One status view for leadership (instead of 10 spreadsheets)
 - Links **discovery → planning → migration tools**
 
+> See the **end-to-end tool workflow** (MRA → ADS and Migration Evaluator → MPA → MGN → Migration Hub) and the three-tier application example in `02_Assess_Phase_Tools.md`, section 2.
+
 > **Check current availability.** AWS adjusts its migration services over time, and some Migration Hub capabilities may change or be limited for new customers. Read the Migration Hub documentation before you rely on a specific feature, and keep your own wave tracker (spreadsheet or Jira) as a backup.
 
 ---

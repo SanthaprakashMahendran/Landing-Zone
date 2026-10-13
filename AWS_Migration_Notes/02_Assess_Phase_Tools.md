@@ -68,6 +68,79 @@ Skipping this phase is the number one reason migrations run over budget.
 | **Questionnaire** | What does each app owner know that tools can't see? | You, with app owners |
 | **ADS** | What exists, what talks to what? | You (AWS service) |
 
+### End-to-End Workflow (Conceptual)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 1. Migration Readiness Assessment (MRA)                                  │
+│    Is the company ready? Identify gaps in skills, security, governance,  │
+│    platform and operations.                                              │
+└───────────────────────────────────┬──────────────────────────────────────┘
+                                    ▼
+        ┌───────────────────────────┴───────────────────────────┐
+        ▼                                                       ▼
+┌─────────────────────────────────┐        ┌─────────────────────────────────┐
+│ 2. Application Discovery Service│        │ 3. Migration Evaluator          │
+│    Discover servers,            │        │    Estimate AWS costs and       │
+│    configurations, utilization  │        │    recommend right-sizing based │
+│    and dependencies.            │        │    on collected data.           │
+└────────────────┬────────────────┘        └────────────────┬────────────────┘
+                 └─────────────────────┬────────────────────┘
+                                       ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 4. Migration Portfolio Assessment (MPA)                                  │
+│    Analyze the application portfolio, often using CMDB and discovery     │
+│    data, to prioritize applications and organize migration waves.        │
+└───────────────────────────────────┬──────────────────────────────────────┘
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 5. AWS Application Migration Service (MGN)                               │
+│    Replicate source servers, test them on AWS, and perform cutover.      │
+└───────────────────────────────────┬──────────────────────────────────────┘
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 6. AWS Migration Hub                                                     │
+│    Group applications and track migration progress across supported      │
+│    migration tools.                                                      │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+> This is a **conceptual** workflow. Some activities run **in parallel** (steps 2 and 3 use the same collected data), and Migration Hub can **track progress while migration is underway**, not only at the end.
+
+| Step | Tool | Question it answers | Phase it mostly belongs to |
+|---|---|---|---|
+| 1 | **MRA** | Is the company ready? | Assess |
+| 2 | **ADS** | What exists, and what depends on what? | Assess |
+| 3 | **Migration Evaluator** | What will it cost on AWS, and what size? | Assess |
+| 4 | **MPA** | Which apps first, and which move together? | Assess → Mobilize |
+| 5 | **MGN** | Replicate, test, cut over | Migrate |
+| 6 | **Migration Hub** | Where does each application stand? | Mobilize → Migrate |
+
+### Example: Migrating a Three-Tier Application
+
+Suppose you have a **web server**, an **application server**, and a **database server**.
+
+```
+   Users ──▶ [ Web server ] ──▶ [ Application server ] ──▶ [ Database server ]
+```
+
+| Step | What you do for this application |
+|---|---|
+| **1. MRA** | Confirm the company has the security, networking, skills and operational processes needed for AWS. |
+| **2. Discovery Service** | Discover the three servers and identify their dependencies (web → app → DB, plus any external calls). |
+| **3. Migration Evaluator** | Estimate the AWS cost using their utilization and configuration data. |
+| **4. MPA** | Use application and dependency information to help decide the migration order and whether the servers should move together. |
+| **5. MGN** | Replicate the **web and application servers** and test them on AWS. If the database is being migrated **as a database workload**, evaluate **AWS DMS** instead of assuming MGN is the right method. |
+| **6. Migration Hub** | Track the migration status of the application components through supported integrations. |
+
+**Why the database is a special case:** MGN copies a whole server (disks, OS, everything), so it works for a database server you want to keep as a server (**rehost**). If you want a **managed database** (for example **RDS or Aurora**, a **replatform**), you move the data with **DMS** (and **SCT** for a different engine). See `06_AWS_SCT_and_DB_Import_Export.md`.
+
+```
+Web server ──MGN──▶ EC2         ┐
+App server ──MGN──▶ EC2         ├─ one wave (same application, tested together)
+Database   ──DMS──▶ RDS/Aurora  ┘   (or MGN → EC2 if you keep the DB as a server)
+```
+
 ---
 
 ## 3. Migration Evaluator (TCO & Business Case)
